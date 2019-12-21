@@ -1,8 +1,10 @@
 import os
 import config
 import flask
+import stomp
 
 import pandas as pd
+import traceback
 
 from flask import (Flask, session, g, json, Blueprint,flash, jsonify, redirect, render_template, request,
                    url_for, send_from_directory, send_file)
@@ -15,10 +17,22 @@ from sklearn.neighbors import NearestNeighbors
 
 from scipy.sparse import csr_matrix
 
+from stomp_receiver import CSVDataListener
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = Flask(__name__)
 cors = CORS(app)
 app.config.from_object(os.environ['APP_SETTINGS'])
+host_and_ports = app.config['HOSTS_AND_PORTS']
+conn = stomp.Connection(host_and_ports=host_and_ports)
 
+base_listener = CSVDataListener()
+conn.set_listener('', base_listener)
+conn.start()
+conn.connect('admin', 'password', wait=True)
+conn.subscribe(destination='/queue/messages', id=1, ack='auto')
 
 def init_dataset(path, limit=0):
     df = pd.read_csv(path, sep=';', na_filter=True, error_bad_lines=False, names=['id', 'title', 'tags'], skiprows=1)
@@ -48,7 +62,6 @@ def init_dataset(path, limit=0):
 
 df, df_book_features, mat_book_features = init_dataset('./dataset/book_names.csv', limit=0)
 
-
 print('Dataset initialized')
 
 tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
@@ -60,10 +73,12 @@ for idx, row in df.iterrows():
     similar_indices = cosine_similarities[idx].argsort()[:-100:-1] 
     similar_items = [(cosine_similarities[idx][i], df['id'][i]) for i in similar_indices] 
     results[row['id']] = similar_items[1:]
+
 print('Similarities found')
 
 model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
 model_knn.fit(mat_book_features)
+
 print('KNN model created')
 
 def translate_indices_mat_to_df(indices):
@@ -95,9 +110,7 @@ def extract_knn_recs(book_id, num):
             n_neighbors=10)
     distances = distances[0]
     indices = translate_indices_mat_to_df(indices)
-    # print(indices)
     recs = zip(distances, indices)
-    # print(recs[0])
     counter = 0
     for distance, idx in recs:
         if counter < num and idx != book_id:
@@ -123,7 +136,8 @@ def content_filter():
             except: 
                 return error_response
     except:
-        return response
+        traceback.print_exc()
+        return error_response
 
 @app.route('/api/0.1/knn_recommender', methods=['POST', 'GET'])
 @cross_origin()
@@ -142,7 +156,8 @@ def knn_recommender():
             except: 
                 return error_response
     except:
-        return response
+        traceback.print_exc()
+        return error_response
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)

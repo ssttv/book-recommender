@@ -4,6 +4,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 class Config(object):
     DEBUG = False
     TESTING = False
+    HOSTS_AND_PORTS = [('0.0.0.0', 61613)]
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     BASE_DIR = os.getcwd()
     CORS_HEADERS = 'Content-Type'
