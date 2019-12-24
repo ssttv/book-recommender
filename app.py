@@ -32,6 +32,7 @@ app.config.from_object(os.environ['APP_SETTINGS'])
 host_and_ports = app.config['HOSTS_AND_PORTS']
 
 # Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
+# If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
 conn = stomp.Connection(host_and_ports=host_and_ports)
 base_listener = CSVDataListener()
 conn.set_listener('', base_listener)
@@ -42,6 +43,7 @@ conn.connect('admin', 'password', wait=True)
 conn.subscribe(destination='/queue/messages', id=1, ack='auto')
 
 def init_dataset(path, limit=0):
+
     # This function reads CSV data and loads datasets into memory. It returns two preprocessed dataframes (from book_names.csv and bookmarks1m.csv) and a matrix representation of user book ratings
     df = pd.read_csv(path, sep=';', na_filter=True, error_bad_lines=False, names=['id', 'title', 'tags'], skiprows=1)
     
@@ -76,7 +78,6 @@ df, df_book_features, mat_book_features = init_dataset('./dataset/book_names.csv
 print('Dataset initialized')
 
 # Find similarities between books using their tags
-
 tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
 tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
 
@@ -90,15 +91,14 @@ for idx, row in df.iterrows():
 print('Similarities found')
 
 # Initialize kNN with problem-appropriate parameters
-
 model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
 model_knn.fit(mat_book_features)
 
 print('KNN model created')
 
 def translate_indices_mat_to_df(indices):
-    # This function translates index values from matrix representation to the actual values from dataframe
 
+    # This function translates index values from matrix representation to the actual values from dataframe
     indices=indices[0]
     translated_indices = []
     for idx in indices:
@@ -106,19 +106,19 @@ def translate_indices_mat_to_df(indices):
     return translated_indices
 
 def translate_idx_df_to_mat(idx):
-    # This function performes the inverse translation of index values from dataframe to matrix
 
+    # This function performes the inverse translation of index values from dataframe to matrix
     df_indices = df_book_features.index.tolist()
     return df_indices.index(idx)
 
 def item(book_id):  
-    # Return book title by index
 
+    # Return book title by index
     return df.loc[df['id'] == book_id]['title'].tolist()[0]
 
 def extract_filtered_recs(book_id, num):
-    # Return a list of recommended similar books, each one represented as a dictionary with id, title and score
 
+    # Return a list of recommended similar books, each one represented as a dictionary with id, title and score
     recs = results[book_id][:num]
     outputs = []
     for rec in recs: 
@@ -126,8 +126,8 @@ def extract_filtered_recs(book_id, num):
     return outputs
 
 def extract_knn_recs(book_id, num):
-    # Use initialized kNN to get a list of recommended books based on user rating patterns. Each item is represented by its index and distance from the target book
 
+    # Use initialized kNN to get a list of recommended books based on user rating patterns. Each item is represented by its index and distance from the target book
     outputs = []
     distances, indices = model_knn.kneighbors(
             mat_book_features[translate_idx_df_to_mat(book_id)],
@@ -146,8 +146,8 @@ def extract_knn_recs(book_id, num):
 @app.route('/api/0.1/content_filter', methods=['POST', 'GET'])
 @cross_origin()
 def content_filter():
-    # Create an API endpoint for the content filtering system
 
+    # Create an API endpoint for the content filtering system
     error_response = jsonify({'error': 'could not process request'})
     try:
         if request.method == 'POST':
@@ -168,8 +168,8 @@ def content_filter():
 @app.route('/api/0.1/knn_recommender', methods=['POST', 'GET'])
 @cross_origin()
 def knn_recommender():
-    # Create an API endpoint for the kNN-based recommendation system
 
+    # Create an API endpoint for the kNN-based recommendation system
     error_response = jsonify({'error': 'could not process request'})
     try:
         if request.method == 'POST':
@@ -188,6 +188,6 @@ def knn_recommender():
         return error_response
 
 if __name__ == "__main__":
+
     # Use Flask development server to run the application with multithreading enabled
-    
     app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)
