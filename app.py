@@ -143,7 +143,7 @@ def extract_knn_recs(book_id, num):
             counter += 1
     return outputs
 
-@app.route('/api/0.1/content_filter', methods=['POST', 'GET'])
+@app.route('/api/0.1/content_filter', methods=['POST'])
 @cross_origin()
 def content_filter():
 
@@ -165,7 +165,7 @@ def content_filter():
         traceback.print_exc()
         return error_response
 
-@app.route('/api/0.1/knn_recommender', methods=['POST', 'GET'])
+@app.route('/api/0.1/knn_recommender', methods=['POST'])
 @cross_origin()
 def knn_recommender():
 
@@ -179,6 +179,33 @@ def knn_recommender():
             filtered_recs = extract_knn_recs(book_id, num_recs)
             count = len(filtered_recs)
             response = jsonify({'response': {'count': count, 'recs': filtered_recs}})
+            try:
+                return response
+            except: 
+                return error_response
+    except:
+        traceback.print_exc()
+        return error_response
+
+@app.route('/api/wip/message_checker', methods=['POST'])
+@cross_origin()
+def message_checker():
+
+    # Create an API endpoint for testing STOMP messaging
+    error_response = jsonify({'error': 'could not process request'})
+    try:
+        if request.method == 'POST':
+            form = request.form
+            clean_up_mode = form.get('clean_up', 'false')
+            if clean_up_mode == 'true':
+                clean_up_flag = True
+            else:
+                clean_up_flag = False
+            out_messages = base_listener.message_list
+            if clean_up_flag:
+                base_listener.message_list = []
+            count = len(out_messages)
+            response = jsonify({'response': {'count': count, 'messages': out_messages}})
             try:
                 return response
             except: 
