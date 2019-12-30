@@ -7,8 +7,27 @@ import stomp
 # Extend a basic listener class to accomodate custom message format
 
 class CSVDataListener(stomp.ConnectionListener):
+    # message_list = []
+
+    def __init__(self):
+        self.message_list = []
+        self.error_list = []
+
     def on_error(self, headers, message):
-        print('received an error "{}"'.format(message))
+        error_dict = {}
+        error_dict['headers'] = headers
+        error_dict['message'] = message
+
+        current_datetime = datetime.now()
+        current_timestamp = datetime.timestamp(current_datetime)
+
+        error_dict['timestamp'] = current_timestamp
+
+        self.error_list.append(error_dict)
+        
+        # Uncomment this line to print out a comment after every received error
+        
+        # print('Error received: "{}"'.format(message))
         
     def on_message(self, headers, message):
         # Parse received STOMP messages, serializing them into dictionaries
@@ -33,10 +52,13 @@ class CSVDataListener(stomp.ConnectionListener):
 
         result_dict['timestamp'] = current_timestamp
 
-        print('Message received: {}'.format(str(result_dict)))
+        self.message_list.append(result_dict)
+        # Uncomment this line to print out a comment after every received message
+        
+        # print('Message received: {}'.format(str(result_dict)))
 
 if __name__ == "__main__":
-    # If this script is lanched directly (that is, using '$ python stomp_receiver.py' command), a STOMP listener will be created and a test message will be sent to it
+    # If this script is launched directly (that is, using '$ python stomp_receiver.py' command), a STOMP listener will be created and a test message will be sent to it
     # Test message can be customized using command line arguments. If none provided, a basic placeholder will be used instead.
     
     if sys.argv[1:]:
@@ -54,6 +76,8 @@ if __name__ == "__main__":
 
     conn.subscribe(destination='/queue/messages', id=1, ack='auto')
     conn.send(body=test_msg, destination='/queue/messages')
-
+    
     time.sleep(1)
+    messages = base_listener.message_list
+    print(messages)
     conn.disconnect()
