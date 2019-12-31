@@ -1,6 +1,7 @@
 import time
 import sys
 from datetime import datetime
+from threading import Lock
 
 import stomp
 
@@ -22,9 +23,12 @@ class CSVDataListener(stomp.ConnectionListener):
         current_timestamp = datetime.timestamp(current_datetime)
 
         error_dict['timestamp'] = current_timestamp
-
-        self.error_list.append(error_dict)
-        
+        lock = Lock()
+        lock.acquire()
+        try:
+            self.error_list.append(error_dict)
+        finally:
+            lock.release()
         # Uncomment this line to print out a comment after every received error
         
         # print('Error received: "{}"'.format(message))
@@ -51,8 +55,12 @@ class CSVDataListener(stomp.ConnectionListener):
         current_timestamp = datetime.timestamp(current_datetime)
 
         result_dict['timestamp'] = current_timestamp
-
-        self.message_list.append(result_dict)
+        lock = Lock()
+        lock.acquire()
+        try:
+            self.message_list.append(result_dict)
+        finally:
+            lock.release()
         # Uncomment this line to print out a comment after every received message
         
         # print('Message received: {}'.format(str(result_dict)))
