@@ -5,6 +5,7 @@ import stomp
 
 import pandas as pd
 import traceback
+import pickle
 
 from flask import (Flask, session, g, json, Blueprint,flash, jsonify, redirect, render_template, request,
                    url_for, send_from_directory, send_file)
@@ -33,14 +34,23 @@ host_and_ports = app.config['HOSTS_AND_PORTS']
 
 # Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
 # If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
-conn = stomp.Connection(host_and_ports=host_and_ports)
-base_listener = CSVDataListener()
-conn.set_listener('', base_listener)
-conn.start()
-conn.connect('admin', 'password', wait=True)
+element_conn = stomp.Connection(host_and_ports=host_and_ports)
+element_listener = CSVDataListener()
+element_conn.set_listener('', element_listener)
+element_conn.start()
+element_conn.connect('admin', 'password', wait=True)
 
 # Subscribe STOMP listener to a given destination
-conn.subscribe(destination='/queue/messages', id=1, ack='auto')
+element_conn.subscribe(destination='/queue/recomendation_update', id=1, ack='client')
+
+# Create a STOMP listener for activities using code above as a template
+activities_conn = stomp.Connection(host_and_ports=host_and_ports)
+activities_listener = CSVDataListener()
+activities_conn.set_listener('', activities_listener)
+activities_conn.start()
+activities_conn.connect('admin', 'password', wait=True)
+
+activities_conn.subscribe(destination='/queue/recomendation_activities', id=1, ack='client')
 
 def init_dataset(path, limit=0):
 
@@ -77,11 +87,20 @@ df, df_book_features, mat_book_features = init_dataset('./dataset/book_names.csv
 
 print('Dataset initialized')
 
-# Find similarities between books using their tags
-tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
-tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
+if not os.path.isfile('cosine_similarities.pkl'):
+    # Find similarities between books using their tags
+    tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
+    tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
 
-cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
+    cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
+    
+    with open("cosine_similarities.pkl", 'wb') as file:
+        pickle.dump(cosine_similarities, file)
+else:
+    with open("cosine_similarities.pkl", 'rb') as file:
+        cosine_similarities = pickle.load(file)
+
+
 results = {}
 for idx, row in df.iterrows():
     similar_indices = cosine_similarities[idx].argsort()[:-100:-1] 
@@ -90,9 +109,16 @@ for idx, row in df.iterrows():
 
 print('Similarities found')
 
-# Initialize kNN with problem-appropriate parameters
-model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
-model_knn.fit(mat_book_features)
+if not os.path.isfile('model_knn.pkl'):
+    # Initialize kNN with problem-appropriate parameters
+    model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
+    model_knn.fit(mat_book_features)
+
+    with open("model_knn.pkl", 'wb') as file:
+        pickle.dump(model_knn, file)
+else:
+    with open("model_knn.pkl", 'rb') as file:
+        model_knn = pickle.load(file)
 
 print('KNN model created')
 
