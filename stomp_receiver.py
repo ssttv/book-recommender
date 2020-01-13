@@ -23,12 +23,8 @@ class CSVDataListener(stomp.ConnectionListener):
         current_timestamp = datetime.timestamp(current_datetime)
 
         error_dict['timestamp'] = current_timestamp
-        lock = Lock()
-        lock.acquire()
-        try:
-            self.error_list.append(error_dict)
-        finally:
-            lock.release()
+        self.error_list.append(error_dict)
+
         # Uncomment this line to print out a comment after every received error
         
         # print('Error received: "{}"'.format(message))
@@ -55,12 +51,7 @@ class CSVDataListener(stomp.ConnectionListener):
         current_timestamp = datetime.timestamp(current_datetime)
 
         result_dict['timestamp'] = current_timestamp
-        lock = Lock()
-        lock.acquire()
-        try:
-            self.message_list.append(result_dict)
-        finally:
-            lock.release()
+        self.message_list.append(result_dict)
         # Uncomment this line to print out a comment after every received message
         
         # print('Message received: {}'.format(str(result_dict)))
