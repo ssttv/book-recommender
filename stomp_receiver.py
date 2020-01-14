@@ -34,7 +34,7 @@ class CSVDataListener(stomp.ConnectionListener):
 
         raw = str(message)
         title, content = raw[:raw.find('{')], raw[raw.find('{')+1:raw.find('}')]
-        fields = content.split(',')
+        fields = content.split(', ')
         result_dict = {}
         message_dict = {}
 
