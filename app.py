@@ -282,6 +282,7 @@ def model_updater():
         status['knn_model'] = 'ok'
         print('KNN model created')
         response = jsonify({'response': {'status': status}})
+        return response
     except:
         return error_response
 
