@@ -10,7 +10,10 @@ counter = 0
 
 while counter < 5:
     test_msg = "BookmarkMessage" + str(counter) + "{status=status, userId=userId, element=element, rate=rate, vol=vol, num=num, page=page, comment='comment'}"
-    conn.send(body=test_msg, destination='/queue/messages')
+    test_element = "ElementMessage" + str(counter) + "{element=11111, name=testbook, tagsString=foo,bar}"
+    test_activity = "ActivityMessage" + str(counter) + "{element=11111, userId=11111, weight=10}"
+    conn.send(body=test_element, destination='/queue/recomendation_update')
+    conn.send(body=test_activity, destination='/queue/recomendation_activities')
     counter += 1
     time.sleep(0.1)
 
