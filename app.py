@@ -239,26 +239,30 @@ def model_updater():
     try:
         status = {}
 
+        global df
+        global df_marks
+        global df_book_features
+        global df_mat_features
+        global cosine_similarities
+        global results
+        global model_knn
+
         df, df_marks  = init_dataset(limit=0)
         df_book_features, mat_book_features = extract_books_x_users(df_marks)
 
         print('Dataset initialized')
         status['base_dataset'] = 'ok'
 
-        if not os.path.isfile('cosine_similarities.pkl'):
-            # Find similarities between books using their tags
-            tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
-            tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
+        # Find similarities between books using their tags
+        tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
+        tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
 
-            cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
-            
-            with open("cosine_similarities.pkl", 'wb') as file:
-                pickle.dump(cosine_similarities, file)
-        else:
-            with open("cosine_similarities.pkl", 'rb') as file:
-                cosine_similarities = pickle.load(file)
-
-
+        cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
+        
+        with open("cosine_similarities.pkl", 'wb') as file:
+            pickle.dump(cosine_similarities, file)
+        
+        global results
         results = {}
         for idx, row in df.iterrows():
             similar_indices = cosine_similarities[idx].argsort()[:-100:-1] 
@@ -268,18 +272,14 @@ def model_updater():
         status['filtering_system'] = 'ok'
         print('Similarities found')
 
-        if not os.path.isfile('model_knn.pkl'):
-            # Initialize kNN with problem-appropriate parameters
-            model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
-            model_knn.fit(mat_book_features)
+        # Initialize kNN with problem-appropriate parameters
+        model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
+        model_knn.fit(mat_book_features)
 
-            with open("model_knn.pkl", 'wb') as file:
-                pickle.dump(model_knn, file)
-        else:
-            with open("model_knn.pkl", 'rb') as file:
-                model_knn = pickle.load(file)
-
-        status('knn_model') = 'ok'
+        with open("model_knn.pkl", 'wb') as file:
+            pickle.dump(model_knn, file)
+       
+        status['knn_model'] = 'ok'
         print('KNN model created')
         response = jsonify({'response': {'status': status}})
     except:
