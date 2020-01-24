@@ -10,7 +10,8 @@ class Config(object):
     CORS_HEADERS = 'Content-Type'
     JSON_AS_ASCII = False
     JSON_SORT_KEYS = False
-
+    MEMORY_PERCENTAGE = 0.8
+    
 class ProductionConfig(Config):
     DATABASE_URI = ''
 

@@ -22,7 +22,7 @@ from scipy.sparse import csr_matrix
 from stomp_receiver import CSVDataListener
 from dotenv import load_dotenv
 
-from memory_manager import managed_memory
+import memory_manager
 
 # Load environment variables from the .env file with python-dotenv module
 load_dotenv()
@@ -34,6 +34,7 @@ cors = CORS(app)
 # Load app config from config.py file, use config variable to point at STOMP/ActiveMQ host and ports
 app.config.from_object(os.environ['APP_SETTINGS'])
 host_and_ports = app.config['HOSTS_AND_PORTS']
+memory_percentage = app.config['MEMORY_PERCENTAGE']
 
 # Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
 # If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
@@ -395,7 +396,7 @@ def csv_updater():
         traceback.print_exc()
         return error_response
 
-@managed_memory(percentage=0.5)
+@memory_manager.managed_memory(percentage=memory_percentage)
 def create_app(app):
     app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)
 
