@@ -54,7 +54,7 @@ activities_conn.connect('admin', 'password', wait=True)
 activities_conn.subscribe(destination='/queue/recomendation_activities', id=1, ack='client')
 
 def make_activity_from_message(message):
-    activity = {'id': message.get('element', None), 'user_id': message.get('userId', None), 'rating': message.get('weight'), 'status': None}
+    activity = {'book_id': message.get('element', None), 'user_id': message.get('userId', None), 'rating': message.get('weight'), 'status': None}
     return activity
 
 def make_element_from_message(message):
@@ -356,10 +356,10 @@ def csv_updater():
                 global df
                 global df_marks
 
-                nu_df = pd.DataFrame(elements, columns=['id', 'title', 'tags']).drop_duplicates()
-                nu_df_marks = pd.DataFrame(activities, columns=['book_id', 'user_id', 'rating', 'status']).drop_duplicates()
-                df = df.append(nu_df)
-                df_marks = df_marks.append(nu_df_marks)
+                nu_df = pd.DataFrame(elements, columns=['id', 'title', 'tags'])
+                nu_df_marks = pd.DataFrame(activities, columns=['book_id', 'user_id', 'rating', 'status'])
+                df = df.append(nu_df).drop_duplicates()
+                df_marks = df_marks.append(nu_df_marks).drop_duplicates()
 
                 # comment out to dump CSV
                 df.to_csv('./dataset/book_names.csv', sep=';', index=False)
