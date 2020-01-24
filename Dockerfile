@@ -2,10 +2,10 @@ FROM ubuntu:18.04
 FROM python:3.7
 
 RUN adduser --disabled-password --gecos '' book-recommender
-
+VOLUME /vol/
 WORKDIR /home/book-recommender
 
-COPY dataset dataset
+COPY dataset /vol/dataset
 COPY requirements.txt requirements.txt
 
 RUN apt-get update
@@ -28,8 +28,6 @@ ENV APP_SETTINGS "config.DevelopmentConfig"
 
 # RUN chown -R book-recommender:book-recommender ./
 # USER book-recommender
-
-VOLUME /content
 
 EXPOSE 5000
 ENTRYPOINT ["./boot.sh"]
