@@ -22,6 +22,8 @@ from scipy.sparse import csr_matrix
 from stomp_receiver import CSVDataListener
 from dotenv import load_dotenv
 
+from memory_manager import managed_memory
+
 # Load environment variables from the .env file with python-dotenv module
 load_dotenv()
 
@@ -393,9 +395,12 @@ def csv_updater():
         traceback.print_exc()
         return error_response
 
-
+@managed_memory(percentage=0.5)
+def create_app(app):
+    app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)
 
 if __name__ == "__main__":
 
     # Use Flask development server to run the application with multithreading enabled
-    app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)
+    # app.run(host='0.0.0.0', port='5002', debug=True, threaded=True)
+    create_app(app)
