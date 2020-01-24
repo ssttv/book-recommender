@@ -361,9 +361,10 @@ def csv_updater():
                 df = df.append(nu_df)
                 df_marks = df_marks.append(nu_df_marks)
 
+                # comment out to dump CSV
                 df.to_csv('./dataset/book_names.csv', sep=';', index=False)
                 df_marks.to_csv('./dataset/bookmarks1m.csv',sep=';', index=False)
-                # out_messages = base_listener.message_list
+
                 if clean_up_flag:
                     element_listener.message_list = []
                     activities_listener.message_list = []
