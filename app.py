@@ -53,6 +53,19 @@ activities_conn.connect('admin', 'password', wait=True)
 
 activities_conn.subscribe(destination='/queue/recomendation_activities', id=1, ack='client')
 
+# Use data from volume if it exists
+if os.path.exists('/vol/'):
+    dataset_path = '/vol/dataset/'
+    if not os.path.exists('/vol/models'):
+        os.mkdir('/vol/models')
+    model_path = '/vol/models/'
+else: 
+    dataset_path = './dataset/'
+    model_path = './'
+
+print('Selected dataset path: ' + dataset_path)
+print('Selected model path: ' + model_path)
+
 def make_activity_from_message(message):
     activity = {'book_id': message.get('element', None), 'user_id': message.get('userId', None), 'rating': message.get('weight'), 'status': None}
     return activity
@@ -68,7 +81,7 @@ def make_element_from_message(message):
 def init_dataset(limit=0):
 
     # This function reads CSV data and loads datasets into memory. It returns two preprocessed dataframes (from book_names.csv and bookmarks1m.csv) and a matrix representation of user book ratings
-    df = pd.read_csv('./dataset/book_names.csv', sep=';', na_filter=True, error_bad_lines=False, names=['id', 'title', 'tags'], skiprows=1)
+    df = pd.read_csv(dataset_path + 'book_names.csv', sep=';', na_filter=True, error_bad_lines=False, names=['id', 'title', 'tags'], skiprows=1)
     
     def transform_tag_string(tags):
 
@@ -87,7 +100,7 @@ def init_dataset(limit=0):
     if limit > 0:
         df = df[:limit]
 
-    df_marks = pd.read_csv('./dataset/bookmarks1m.csv',sep=';', na_filter=True, error_bad_lines=False, names=['book_id', 'user_id', 'rating', 'status'], skiprows=1)
+    df_marks = pd.read_csv(dataset_path + 'bookmarks1m.csv',sep=';', na_filter=True, error_bad_lines=False, names=['book_id', 'user_id', 'rating', 'status'], skiprows=1)
     
     return df, df_marks
 
@@ -104,17 +117,17 @@ df_book_features, mat_book_features = extract_books_x_users(df_marks)
 
 print('Dataset initialized')
 
-if not os.path.isfile('cosine_similarities.pkl'):
+if not os.path.isfile(model_path + 'cosine_similarities.pkl'):
     # Find similarities between books using their tags
     tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
     tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
 
     cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
     
-    with open("cosine_similarities.pkl", 'wb') as file:
+    with open(model_path + "cosine_similarities.pkl", 'wb') as file:
         pickle.dump(cosine_similarities, file)
 else:
-    with open("cosine_similarities.pkl", 'rb') as file:
+    with open(model_path + "cosine_similarities.pkl", 'rb') as file:
         cosine_similarities = pickle.load(file)
 
 
@@ -126,15 +139,15 @@ for idx, row in df.iterrows():
 
 print('Similarities found')
 
-if not os.path.isfile('model_knn.pkl'):
+if not os.path.isfile(model_path + 'model_knn.pkl'):
     # Initialize kNN with problem-appropriate parameters
     model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
     model_knn.fit(mat_book_features)
 
-    with open("model_knn.pkl", 'wb') as file:
+    with open(model_path + "model_knn.pkl", 'wb') as file:
         pickle.dump(model_knn, file)
 else:
-    with open("model_knn.pkl", 'rb') as file:
+    with open(model_path + "model_knn.pkl", 'rb') as file:
         model_knn = pickle.load(file)
 
 print('KNN model created')
@@ -259,7 +272,7 @@ def model_updater():
 
         cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
         
-        with open("cosine_similarities.pkl", 'wb') as file:
+        with open(model_path + "cosine_similarities.pkl", 'wb') as file:
             pickle.dump(cosine_similarities, file)
         
         global results
@@ -276,7 +289,7 @@ def model_updater():
         model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=20, n_jobs=-1)
         model_knn.fit(mat_book_features)
 
-        with open("model_knn.pkl", 'wb') as file:
+        with open(model_path + "model_knn.pkl", 'wb') as file:
             pickle.dump(model_knn, file)
        
         status['knn_model'] = 'ok'
@@ -362,8 +375,8 @@ def csv_updater():
                 df_marks = df_marks.append(nu_df_marks).drop_duplicates()
 
                 # comment out to dump CSV
-                df.to_csv('./dataset/book_names.csv', sep=';', index=False)
-                df_marks.to_csv('./dataset/bookmarks1m.csv',sep=';', index=False)
+                df.to_csv(dataset_path + 'book_names.csv', sep=';', index=False)
+                df_marks.to_csv(dataset_path + '/bookmarks1m.csv',sep=';', index=False)
 
                 if clean_up_flag:
                     element_listener.message_list = []
