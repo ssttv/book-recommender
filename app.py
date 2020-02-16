@@ -45,7 +45,7 @@ element_conn.start()
 element_conn.connect('admin', 'password', wait=True)
 
 # Subscribe STOMP listener to a given destination
-element_conn.subscribe(destination='/queue/recomendation_update', id=1, ack='client')
+element_conn.subscribe(destination='/queue/recommendation_update', id=1, ack='client')
 
 # Create a STOMP listener for activities using code above as a template
 activities_conn = stomp.Connection(host_and_ports=host_and_ports)
@@ -54,7 +54,7 @@ activities_conn.set_listener('', activities_listener)
 activities_conn.start()
 activities_conn.connect('admin', 'password', wait=True)
 
-activities_conn.subscribe(destination='/queue/recomendation_activities', id=1, ack='client')
+activities_conn.subscribe(destination='/queue/recommendation_activities', id=1, ack='client')
 
 # Use data from volume if it exists
 if os.path.exists('/vol/'):
