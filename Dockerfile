@@ -19,6 +19,7 @@ RUN venv/bin/pip install --no-cache-dir -r requirements.txt
 COPY app.py app.py
 COPY config.py config.py
 COPY stomp_receiver.py stomp_receiver.py
+COPY memory_manager.py memory_manager.py
 COPY boot.sh boot.sh
 RUN chmod +x boot.sh
 
