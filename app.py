@@ -36,25 +36,31 @@ app.config.from_object(os.environ['APP_SETTINGS'])
 host_and_ports = app.config['HOSTS_AND_PORTS']
 memory_percentage = app.config['MEMORY_PERCENTAGE']
 
-# Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
-# If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
-element_conn = stomp.Connection(host_and_ports=host_and_ports)
-element_listener = CSVDataListener()
-element_conn.set_listener('', element_listener)
-element_conn.start()
-element_conn.connect('admin', 'password', wait=True)
+try:
+    # Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
+    # If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
+    element_conn = stomp.Connection(host_and_ports=host_and_ports)
+    element_listener = CSVDataListener()
+    element_conn.set_listener('', element_listener)
+    element_conn.start()
+    element_conn.connect('admin', 'password', wait=True)
 
-# Subscribe STOMP listener to a given destination
-element_conn.subscribe(destination='/queue/recommendation_update', id=1, ack='client')
+    # Subscribe STOMP listener to a given destination
+    element_conn.subscribe(destination='/queue/recommendation_update', id=1, ack='client')
 
-# Create a STOMP listener for activities using code above as a template
-activities_conn = stomp.Connection(host_and_ports=host_and_ports)
-activities_listener = CSVDataListener()
-activities_conn.set_listener('', activities_listener)
-activities_conn.start()
-activities_conn.connect('admin', 'password', wait=True)
+    # Create a STOMP listener for activities using code above as a template
+    activities_conn = stomp.Connection(host_and_ports=host_and_ports)
+    activities_listener = CSVDataListener()
+    activities_conn.set_listener('', activities_listener)
+    activities_conn.start()
+    activities_conn.connect('admin', 'password', wait=True)
 
-activities_conn.subscribe(destination='/queue/recommendation_activities', id=1, ack='client')
+    activities_conn.subscribe(destination='/queue/recommendation_activities', id=1, ack='client')
+except:
+    print('Error in STOMP connection')
+
+# Create a common dictionary of received updates
+messages = {}
 
 # Use data from volume if it exists
 if os.path.exists('/vol/'):
@@ -300,6 +306,61 @@ def model_updater():
         response = jsonify({'response': {'status': status}})
         return response
     except:
+        return error_response
+
+@app.route('/api/update/<message_type>', methods=['POST'])
+@cross_origin()
+def message_update(message_type):
+
+    # Create an API endpoint for REST message data
+    error_response = jsonify({'error': 'could not process request'})
+    try:
+        if not messages.get(message_type, None):
+            messages[message_type] = []
+        form = request.form
+        messages[message_type].append(form)
+        return jsonify({'response': 'message received'})
+    except:
+        traceback.print_exc()
+        return error_response
+
+@app.route('/api/update_checker', methods=['POST'])
+@cross_origin()
+def message_update_checker():
+    error_response = jsonify({'error': 'could not process request'})
+    try:
+        if request.method == 'POST':
+            form = request.form
+            clean_up_mode = form.get('clean_up', 'false')
+            if clean_up_mode == 'true':
+                clean_up_flag = True
+            else:
+                clean_up_flag = False
+            out_messages = {}
+            
+            global messages
+
+            if messages.get('element', None):
+                out_messages['element'] = {}
+                out_messages['element']['count'] = len(messages.get('element'))
+                out_messages['element']['messages'] = messages.get('element')
+            if messages.get('activity', None):
+                out_messages['activity'] = {}
+                out_messages['activity']['count'] = len(messages.get('activity'))
+                out_messages['activity']['messages'] = messages.get('activity')
+            if messages.get('recalculate', None):
+                out_messages['recalculate'] = {}
+                out_messages['recalculate']['count'] = len(messages.get('recalculate'))
+                out_messages['recalculate']['messages'] = messages.get('recalculate')
+            if clean_up_flag:
+                messages = []
+            response = jsonify({'response': {'messages': out_messages}})
+            try:
+                return response
+            except: 
+                return error_response
+    except:
+        traceback.print_exc()
         return error_response
 
 @app.route('/api/wip/message_checker', methods=['POST'])
