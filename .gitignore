@@ -2,4 +2,6 @@
 /__pycache__/
 /dataset*/
 /venv/
+/migrations/
+/trash/
 .env

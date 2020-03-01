@@ -11,6 +11,8 @@ class Config(object):
     JSON_AS_ASCII = False
     JSON_SORT_KEYS = False
     MEMORY_PERCENTAGE = 0.8
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
     
 class ProductionConfig(Config):
     DATABASE_URI = ''

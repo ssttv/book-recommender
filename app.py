@@ -2,6 +2,7 @@ import os
 import config
 import flask
 import stomp
+import gc
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,9 @@ from flask import (Flask, session, g, json, Blueprint,flash, jsonify, redirect, 
 from flask_cors import CORS, cross_origin
 from werkzeug.utils import secure_filename
 
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel 
 from sklearn.neighbors import NearestNeighbors
@@ -21,6 +25,8 @@ from scipy.sparse import csr_matrix
 
 from stomp_receiver import CSVDataListener
 from dotenv import load_dotenv
+
+from handlers import handle_message
 
 import memory_manager
 
@@ -33,31 +39,13 @@ cors = CORS(app)
 
 # Load app config from config.py file, use config variable to point at STOMP/ActiveMQ host and ports
 app.config.from_object(os.environ['APP_SETTINGS'])
-host_and_ports = app.config['HOSTS_AND_PORTS']
 memory_percentage = app.config['MEMORY_PERCENTAGE']
 
-try:
-    # Create a STOMP listener bound to specified host and ports using imported class from stomp_receiver.py
-    # If ActiveMQ server works only on the host machine, Docker container must be launched with '--net=host' parameter to access port 61613
-    element_conn = stomp.Connection(host_and_ports=host_and_ports)
-    element_listener = CSVDataListener()
-    element_conn.set_listener('', element_listener)
-    element_conn.start()
-    element_conn.connect('admin', 'password', wait=True)
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
-    # Subscribe STOMP listener to a given destination
-    element_conn.subscribe(destination='/queue/recommendation_update', id=1, ack='client')
-
-    # Create a STOMP listener for activities using code above as a template
-    activities_conn = stomp.Connection(host_and_ports=host_and_ports)
-    activities_listener = CSVDataListener()
-    activities_conn.set_listener('', activities_listener)
-    activities_conn.start()
-    activities_conn.connect('admin', 'password', wait=True)
-
-    activities_conn.subscribe(destination='/queue/recommendation_activities', id=1, ack='client')
-except:
-    print('Error in STOMP connection')
+import models
+from models import Element, Activity
 
 # Create a common dictionary of received updates
 messages = {}
@@ -87,11 +75,42 @@ def make_element_from_message(message):
         pass
     return element
 
-def init_dataset(limit=0):
+def records_from_db(target_model, page_size=100000):
+    # records = []
 
-    # This function reads CSV data and loads datasets into memory. It returns two preprocessed dataframes (from book_names.csv and bookmarks1m.csv) and a matrix representation of user book ratings
-    df = pd.read_csv(dataset_path + 'book_names.csv', sep=';', na_filter=True, error_bad_lines=False, names=['id', 'title', 'tags'], skiprows=1)
+    step = 0
+    transactions = db.session.query(target_model).all()
+    query_results = [x.convert_to_dict() for x in transactions]
     
+    # Unfinished code for pagination and handling of large DB queries
+
+    # for query_result in query_results:
+    #     records.append(query_result.convert_to_dict())
+    # while True:
+    #     print("Page #{}".format(step))
+    #     start, stop = page_size * step, page_size * (step+1)
+    #     transactions = db.session.query(target_model).slice(start, stop).all()
+    #     if transactions is None:
+    #         break
+    #     query_results = transactions
+    #     for query_result in query_results:
+    #         records.append(query_result.convert_to_dict())
+    #     query_results = None
+    #     print(len(transactions))
+    #     if len(transactions) < page_size:
+    #         break
+    #     gc.collect()
+    #     step += 1
+
+    return query_results
+
+def init_datasets_from_records(limit=0):
+    records_element = records_from_db(Element)
+    records_activity = records_from_db(Activity)
+    print('Number of elements: {}'.format(len(records_element)))
+    print('Number of activities: {}'.format(len(records_activity)))
+
+    df_elements = pd.DataFrame.from_records(records_element, columns=['element_id', 'title', 'tags'])
     def transform_tag_string(tags):
 
         # Transforms tags to enable feature extraction
@@ -102,34 +121,28 @@ def init_dataset(limit=0):
             tags = ''.join([x for x in tags if not x.isdigit()])
         return tags
 
-    df['tags'] = df['tags'].apply(lambda x: transform_tag_string(x))
-    df = df.dropna(subset = ['id', 'title', 'tags'])
+    df_elements['tags'] = df_elements['tags'].apply(lambda x: transform_tag_string(x))
+    df_elements = df_elements.dropna(subset = ['element_id', 'title', 'tags'])
+    df_activities = pd.DataFrame.from_records(records_activity, exclude=['activity_id'], columns=['activity_id', 'element_id', 'user_id', 'rating', 'status'])
+    return df_elements, df_activities
 
-    # Only top N entries from book_names.csv are sent into the output dataframe if limit is specified
-    if limit > 0:
-        df = df[:limit]
-
-    df_marks = pd.read_csv(dataset_path + 'bookmarks1m.csv',sep=';', na_filter=True, error_bad_lines=False, names=['book_id', 'user_id', 'rating', 'status'], skiprows=1)
-    
-    return df, df_marks
-
-def extract_books_x_users(df_marks):
-    df_marks_clean = (df_marks[df_marks['rating'] != 0])
-    df_marks_clean = df_marks_clean.drop(['status'],1).drop_duplicates()
-    df_marks_users = df_marks_clean.sort_values(by=['user_id'])
-    df_book_features = df_marks_users.pivot(index='book_id', columns='user_id', values='rating').fillna(0)
+def extract_books_x_users(df_activities):
+    df_activities_clean = (df_activities[df_activities['rating'] != 0])
+    df_activities_clean = df_activities_clean.drop(['status'],1).drop_duplicates()
+    df_activities_users = df_activities_clean.sort_values(by=['user_id'])
+    df_book_features = df_activities_users.pivot(index='element_id', columns='user_id', values='rating').fillna(0)
     mat_book_features = csr_matrix(df_book_features.values)
     return df_book_features, mat_book_features
 
-df, df_marks  = init_dataset(limit=0)
-df_book_features, mat_book_features = extract_books_x_users(df_marks)
-
+df_elements, df_activities = init_datasets_from_records()
+print('All queries done')
+df_book_features, mat_book_features = extract_books_x_users(df_activities)
 print('Dataset initialized')
 
 if not os.path.isfile(model_path + 'cosine_similarities.pkl'):
     # Find similarities between books using their tags
     tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 3), min_df=0, stop_words=['и', 'или'])
-    tfidf_matrix = tf.fit_transform(df['tags'].values.astype(str))
+    tfidf_matrix = tf.fit_transform(df_elements['tags'].values.astype(str))
 
     cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix) 
     
@@ -138,13 +151,13 @@ if not os.path.isfile(model_path + 'cosine_similarities.pkl'):
 else:
     with open(model_path + "cosine_similarities.pkl", 'rb') as file:
         cosine_similarities = pickle.load(file)
-
+    print("Similarities loaded")
 
 results = {}
-for idx, row in df.iterrows():
+for idx, row in df_elements.iterrows():
     similar_indices = cosine_similarities[idx].argsort()[:-100:-1] 
-    similar_items = [(cosine_similarities[idx][i], df['id'][i]) for i in similar_indices] 
-    results[row['id']] = similar_items[1:]
+    similar_items = [(cosine_similarities[idx][i], df_elements['element_id'][i]) for i in similar_indices] 
+    results[row['element_id']] = similar_items[1:]
 
 print('Similarities found')
 
@@ -158,6 +171,7 @@ if not os.path.isfile(model_path + 'model_knn.pkl'):
 else:
     with open(model_path + "model_knn.pkl", 'rb') as file:
         model_knn = pickle.load(file)
+    print("KNN model loaded")
 
 print('KNN model created')
 
@@ -176,33 +190,32 @@ def translate_idx_df_to_mat(idx):
     df_indices = df_book_features.index.tolist()
     return df_indices.index(idx)
 
-def item(book_id):  
-
+def item(element_id):  
     # Return book title by index
-    return df.loc[df['id'] == book_id]['title'].tolist()[0]
+    return df_elements.loc[df_elements['element_id'] == element_id]['title'].tolist()[0]
 
-def extract_filtered_recs(book_id, num):
+def extract_filtered_recs(element_id, num):
 
     # Return a list of recommended similar books, each one represented as a dictionary with id, title and score
-    recs = results[book_id][:num]
+    recs = results[element_id][:num]
     outputs = []
     for rec in recs: 
         outputs.append({'id': int(rec[1]), 'title': item(rec[1]), 'score': rec[0]})
     return outputs
 
-def extract_knn_recs(book_id, num):
+def extract_knn_recs(element_id, num):
 
     # Use initialized kNN to get a list of recommended books based on user rating patterns. Each item is represented by its index and distance from the target book
     outputs = []
     distances, indices = model_knn.kneighbors(
-            mat_book_features[translate_idx_df_to_mat(book_id)],
+            mat_book_features[translate_idx_df_to_mat(element_id)],
             n_neighbors=10)
     distances = distances[0]
     indices = translate_indices_mat_to_df(indices)
     recs = zip(distances, indices)
     counter = 0
     for distance, idx in recs:
-        if counter < num and idx != book_id:
+        if counter < num and idx != element_id:
             print(distance, idx)
             outputs.append({'id': int(idx), 'distance': distance})
             counter += 1
@@ -217,9 +230,9 @@ def content_filter():
     try:
         if request.method == 'POST':
             form = request.form
-            book_id = int(form['book_id'])
-            num_recs = int(form['num_recs'])
-            filtered_recs = extract_filtered_recs(book_id, num_recs)
+            element_id = int(form.get('element_id', 0))
+            num_recs = int(form.get('num_recs', 1))
+            filtered_recs = extract_filtered_recs(element_id, num_recs)
             count = len(filtered_recs)
             response = jsonify({'response': {'count': count, 'recs': filtered_recs}})
             try:
@@ -239,9 +252,9 @@ def knn_recommender():
     try:
         if request.method == 'POST':
             form = request.form
-            book_id = int(form['book_id'])
-            num_recs = int(form['num_recs'])
-            filtered_recs = extract_knn_recs(book_id, num_recs)
+            element_id = int(form.get('element_id', 0))
+            num_recs = int(form.get('num_recs', 1))
+            filtered_recs = extract_knn_recs(element_id, num_recs)
             count = len(filtered_recs)
             response = jsonify({'response': {'count': count, 'recs': filtered_recs}})
             try:
@@ -317,8 +330,22 @@ def message_update(message_type):
     try:
         if not messages.get(message_type, None):
             messages[message_type] = []
-        form = request.form
-        messages[message_type].append(form)
+        content = request.json
+        package = handle_message(message, message_type)
+        if package.get('success', False):
+            if message_type == 'element':
+                element_entry = Element(element_id=package['element_id'], title=package['title'], tags=package['tags'])
+                db.session.merge(element_entry)
+                db.session.commit()
+            elif message_type == 'activity':
+                activity_entry = Activity(element_id=package['element_id'], user_id=package['title'], rating=package['rating'], status=package['status'])
+                if package['element_id'] is not None:
+                    known_element = db.session.query(Element).filter(Element.element_id==package['element_id']).first()
+                    if len(known_element) > 0:
+                        element_entry = Element(element_id=package['element_id'], title=None, tags=None)
+                        db.session.add(element_entry)
+                db.session.commit()
+        messages[message_type].append(content)
         return jsonify({'response': 'message received'})
     except:
         traceback.print_exc()
@@ -359,100 +386,6 @@ def message_update_checker():
                 return response
             except: 
                 return error_response
-    except:
-        traceback.print_exc()
-        return error_response
-
-@app.route('/api/wip/message_checker', methods=['POST'])
-@cross_origin()
-def message_checker():
-
-    # Create an API endpoint for testing STOMP messaging
-    error_response = jsonify({'error': 'could not process request'})
-    try:
-        if request.method == 'POST':
-            form = request.form
-            clean_up_mode = form.get('clean_up', 'false')
-            if clean_up_mode == 'true':
-                clean_up_flag = True
-            else:
-                clean_up_flag = False
-            out_messages = {}
-            out_messages['element'] = {}
-            out_messages['element']['count'] = len(element_listener.message_list)
-            out_messages['element']['messages'] = element_listener.message_list
-            out_messages['activities'] = {}
-            out_messages['activities']['count'] = len(activities_listener.message_list)
-            out_messages['activities']['messages'] = activities_listener.message_list
-            # out_messages = base_listener.message_list
-            if clean_up_flag:
-                element_listener.message_list = []
-                activities_listener.message_list = []
-            count = len(out_messages)
-            response = jsonify({'response': {'message_queues': out_messages}})
-            try:
-                return response
-            except: 
-                return error_response
-    except:
-        traceback.print_exc()
-        return error_response
-
-@app.route('/api/wip/csv_updater', methods=['POST'])
-@cross_origin()
-def csv_updater():
-
-    # Create an API endpoint for testing STOMP messaging
-    error_response = jsonify({'error': 'could not process request'})
-    try:
-        if request.method == 'POST':
-            form = request.form
-            clean_up_mode = form.get('clean_up', 'false')
-            if clean_up_mode == 'true':
-                clean_up_flag = True
-            else:
-                clean_up_flag = False
-            if len(element_listener.message_list) > 0 or len(activities_listener.message_list) > 0:
-                elements = []
-                activities = []
-                if len(element_listener.message_list) > 0:
-                    element_messages = element_listener.message_list
-                    elements = [make_element_from_message(x['message']) for x in element_messages]
-                    # elements = list(np.unique(np.array(elements).astype(str)))
-                if len(activities_listener.message_list) > 0:
-                    activities_messages = activities_listener.message_list
-                    activities = [make_activity_from_message(x['message']) for x in activities_messages]
-                    # activities = list(np.unique(np.array(activities).astype(str)))
-
-                # print('='*15)
-                # print(elements)
-                # print('-'*15)
-                # print(activities)
-                # print('='*15)
-
-                global df
-                global df_marks
-
-                nu_df = pd.DataFrame(elements, columns=['id', 'title', 'tags'])
-                nu_df_marks = pd.DataFrame(activities, columns=['book_id', 'user_id', 'rating', 'status'])
-                df = df.append(nu_df).drop_duplicates()
-                df_marks = df_marks.append(nu_df_marks).drop_duplicates()
-
-                # comment out to dump CSV
-                df.to_csv(dataset_path + 'book_names.csv', sep=';', index=False)
-                df_marks.to_csv(dataset_path + '/bookmarks1m.csv',sep=';', index=False)
-
-                if clean_up_flag:
-                    element_listener.message_list = []
-                    activities_listener.message_list = []
-                
-                response = jsonify({'response': 'CSV update finished'})
-                try:
-                    return response
-                except: 
-                    return error_response
-            else:
-                response = jsonify({'response': 'No messages in queues'})
     except:
         traceback.print_exc()
         return error_response
