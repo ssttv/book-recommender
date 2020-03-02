@@ -306,7 +306,7 @@ def message_update(message_type):
                 if package['content']['element_id'] is not None:
                     known_element = db.session.query(Element).filter(Element.element_id==package['content']['element_id']).limit(10).all()
                     if known_element is not None and not len(known_element) > 0 :
-                        element_entry = Element(element_id=package['content']['element_id'], title=None, tags=None)
+                        element_entry = Element(element_id=package['content']['element_id'], title="", tags="")
                         db.session.add(element_entry)
                 db.session.commit()
         messages[message_type].append(content)
