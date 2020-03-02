@@ -20,13 +20,15 @@ COPY app.py app.py
 COPY config.py config.py
 COPY stomp_receiver.py stomp_receiver.py
 COPY memory_manager.py memory_manager.py
+COPY models.py models.py
+COPY handlers.py handlers.py
 COPY boot.sh boot.sh
 RUN chmod +x boot.sh
 
 ENV FLASK_APP app.py
 ENV FLASK_ENV development
 ENV APP_SETTINGS "config.DevelopmentConfig"
-ENV DATABASE_URL=mysql://admin:password@localhost/recommender?use_unicode=1&charset=utf8
+ENV DATABASE_URL=mysql+pymysql://admin:password@localhost/recommender?use_unicode=1&charset=utf8
 
 # RUN chown -R book-recommender:book-recommender ./
 # USER book-recommender
