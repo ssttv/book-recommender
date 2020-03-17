@@ -9,6 +9,9 @@ import numpy as np
 import pandas as pd
 import traceback
 import pickle
+import logging
+
+from threading import Thread
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel 
@@ -81,6 +84,7 @@ def train_content_filter():
             transactions = db.session.query(target_model).all()
             query_results = [x.convert_to_dict() for x in transactions]
         elements = query_results
+        print('Calculating similarities ... ')
         df= pd.DataFrame.from_records(elements, columns=['element_id', 'title', 'tags'])
         def transform_tag_string(tags):
 
@@ -99,13 +103,32 @@ def train_content_filter():
         cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix)
         with open(model_path + "cosine_similarities.pkl", 'wb') as file:
             pickle.dump(cosine_similarities, file)
+            print('Similarities saved')
+        
+        print('Filtering results ...')
+
         filtering_results = {}
-        for idx, row in df.iterrows():
+
+        def process_row(idx, row):
+            print(row['element_id'])
             similar_indices = cosine_similarities[idx].argsort()[:-100:-1] 
             similar_items = [(cosine_similarities[idx][i], df['element_id'].iloc[i]) for i in similar_indices] 
             filtering_results[row['element_id']] = similar_items[1:]
+
+        threads = []
+        for idx, row in df.iterrows():
+            process = Thread(target=process_row, args=(idx, row))
+            threads.append(process)
+        
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+        
         with open(model_path + "filtering_results.pkl", 'wb') as file:
             pickle.dump(filtering_results, file)
+            print('Results saved')
         response = jsonify({'response': 'similarities found'})
         return response
     except:
@@ -113,9 +136,9 @@ def train_content_filter():
         return error_response
     return error_response
 
-@api.route('/0.1/infer/content_filter', methods=['POST'])
+@api.route('/0.1/recommend/content_filter', methods=['POST'])
 @cross_origin()
-def infer_content_filter():
+def recommend_content_filter():
 
     # Create an API endpoint for the content filtering system
     error_response = jsonify({'error': 'could not process request'})
