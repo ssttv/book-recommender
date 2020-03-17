@@ -1,4 +1,5 @@
-from app import db
+# from app import db
+from extensions import db
 
 class Element(db.Model):
     element_id = db.Column(db.Integer, primary_key=True)

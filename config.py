@@ -13,6 +13,11 @@ class Config(object):
     MEMORY_PERCENTAGE = 0.8
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CELERY_BROKER_URL = 'amqp://guest:guest@localhost:5672/'
+    CELERY_RESULT_BACKEND = '+'.join(['db', os.environ.get('DATABASE_URL')])
+    # CELERY_RESULT_BACKEND = 'db+mysql+mysqldb://admin:password@localhost/recommender?use_unicode=1&charset=utf8'
+    CELERY_IMPORTS = ('tasks', )
+    CELERY_ANNOTATIONS = {}
     
 class ProductionConfig(Config):
     DATABASE_URI = ''
