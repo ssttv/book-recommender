@@ -5,7 +5,6 @@ RUN adduser --disabled-password --gecos '' book-recommender
 VOLUME /vol/
 WORKDIR /home/book-recommender
 
-COPY dataset /vol/dataset
 COPY requirements.txt requirements.txt
 
 RUN apt-get update
